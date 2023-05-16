@@ -1,3 +1,6 @@
+
+
+
 // **********************************************************
 // ******************   Flysky Tx Code   ********************
 //               by midelic on RCgroups.com 
@@ -6,8 +9,10 @@
 //     Thanks to Philip Cowzer(Sadsack)for testing this version  
 // ************************************************************
 //Hardware: Atmega8/168/328- 8mhz
+//DIY "FlySky" RF module  http://www.rcgroups.com/forums/showthread.php?t=1921870
 
-#define SERIAL_BAUD_RATE 115200 //115.200 baud serial port speed for debugging
+
+#define SERIAL_BAUD_RATE 9600 //9600 baud serial port speed for debugging
 
 
 static const uint8_t A7105_regs[] = {
@@ -48,17 +53,17 @@ static const uint8_t tx_channels[16][16] = {
   #define  SCK_off PORTD &= 0xEF//D4
   #define  SDI_on PORTD |= 0x20 //D5
   #define  SDI_off PORTD &= 0xDF //D5
- //
+  //
   #define  SDI_1 (PIND & 0x20) == 0x20 //D5
   #define  SDI_0 (PIND & 0x20) == 0x00 //D5
- //
+  //
   #define RED_LED_pin A3
   #define Red_LED_ON  PORTC |= _BV(3);
   #define Red_LED_OFF  PORTC &= ~_BV(3);
   #define NOP() __asm__ __volatile__("nop")
   
 //########## Variables #################
-static uint32_t id;//tx id, don't confuse with A7105 id
+static uint32_t id;//tx id, don't confuse it with A7105 id
 static uint8_t chanrow;
 static uint8_t chancol;
 static uint8_t chanoffset;
@@ -102,6 +107,7 @@ void setup() {
             _spi_write_adress(i, A7105_regs[i]);
 
 }
+_spi_strobe(0xA0);//stand-by
 _spi_write_adress(0x02,0x01);
 while(_spi_read_adress(0x02)){
 if_calibration1=_spi_read_adress(0x22);
@@ -111,7 +117,6 @@ if(if_calibration1&0x10){//do nothing
 //delay(10);// debug code wait for calib.
 _spi_write_adress(0x24,0x13);
 _spi_write_adress(0x26,0x3b);
-_spi_write_adress(0x28, 0x1F);// MAX 21mA ....1dbm added at the end of setup function
 _spi_write_adress(0x0F,0x00);//channel 0
 _spi_write_adress(0x02,0x02);
 while(_spi_read_adress(0x02)){
@@ -129,14 +134,17 @@ if(vco_calibration1&0x08){//do nothing
 }
 //delay(10);//debug code wait for calib.
 _spi_write_adress(0x25,0x08);
-
+_spi_write_adress(0x28,0x1F);//set power to 1db maximum
+_spi_strobe(0xA0);//stand-by strobe command
+//
 id=0x30000006;//fixed TX ID(Thierry ID)
 bind_Flysky();
+Red_LED_ON;
 chanrow=id % 16;
 chanoffset=(id & 0xff) / 16;
 chancol=0;
 //PPM setup
-attachInterrupt(0, read_ppm, CHANGE);
+attachInterrupt(PPM_pin - 2, read_ppm, CHANGE);
 TCCR1A = 0;  //reset timer1
 TCCR1B = 0;
 TCCR1B |= (1 << CS11);  //set timer1 to increment every 1 us
@@ -145,8 +153,8 @@ TCCR1B |= (1 << CS11);  //set timer1 to increment every 1 us
 
 //servodata timing range for flysky.
 ////-100% =~ 0x03e8//=1000us(min)
- //+100% =~ 0x07ca//=1994us(max)
- //Center = 0x5d9//=1497us(center)
+//+100% =~ 0x07ca//=1994us(max)
+//Center = 0x5d9//=1497us(center)
 //channel order AIL;ELE;THR;RUD;AUX1;AUX2;AUX3;AUX4
 
 //############ MAIN LOOP ##############
@@ -161,24 +169,29 @@ _spi_strobe(0xD0);
 chancol = (chancol + 1) % 16;
 }
 
-void read_ppm(){
-  static unsigned int pulse;
-  static unsigned long counterPPM;
-  static byte chan;//channel
-
-  counterPPM = TCNT1;
-  TCNT1 = 0;
-
-  if(counterPPM < 510){  //must be a pulse if less than 510us(for flysky is 300-400us)
-    pulse = counterPPM;
-  }
-  else if(counterPPM > 1910){  //sync pulses over 1910us
-    chan = 0;
-  }
-  else{  //servo values between 510us and 2420us will end up here
-    Servo_data[chan] = (counterPPM + pulse);
-    chan++;
-  }
+void read_ppm() {
+	static unsigned int pulse;
+	static unsigned long counterPPM;
+	static byte chan;
+	counterPPM = TCNT1;
+	TCNT1 = 0;
+#if F_CPU == 16000000//thanks to goebisch for this one
+	const long scale = 2;
+#elif F_CPU == 8000000
+	const long scale = 1;
+#else
+#error // 8 or 16MHz only !
+#endif
+	if(counterPPM < 510*scale) {  //must be a pulse if less than 510us
+		pulse = counterPPM;
+	}
+	else if(counterPPM > 1910*scale) {  //sync pulses over 1910us
+		chan = 0;
+	}
+	else{  //servo values between 510us and 2420us will end up here
+		Servo_data[chan]= (counterPPM + pulse)/scale;
+		chan++;
+	}
 }
 
 //BIND_TX
@@ -233,11 +246,14 @@ _spi_write((id >>  16) & 0xff);
 _spi_write((id >>  24) & 0xff);
 
 for(i=0;i<8;i++){
+cli();
 packet[0+2*i]=lowByte(Servo_data[i]);//low byte of servo timing(1000-2000us)
 packet[1+2*i]=highByte(Servo_data[i]);//high byte of servo timing(1000-2000us)
+sei();
 _spi_write(packet[0+2*i]);
 _spi_write(packet[1+2*i]);
 }
+
 CS_on;
 }
 
@@ -306,4 +322,19 @@ _spi_write(address);
 void A7105_reset(void) {
   _spi_write_adress(0x00,0x00); 
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
 
