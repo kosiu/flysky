@@ -1,6 +1,3 @@
-
-
-
 // **********************************************************
 // ******************   Flysky Tx Code   ********************
 //               by midelic on RCgroups.com 
@@ -9,8 +6,6 @@
 //     Thanks to Philip Cowzer(Sadsack)for testing this version  
 // ************************************************************
 //Hardware: Atmega8/168/328- 8mhz
-//DIY "FlySky" RF module  http://www.rcgroups.com/forums/showthread.php?t=1921870
-
 
 #define SERIAL_BAUD_RATE 115200 //115.200 baud serial port speed for debugging
 
@@ -41,13 +36,13 @@ static const uint8_t tx_channels[16][16] = {
 };
  
 //Spi Comm.pins with A7105/PPM
-  #define PPM_pin 3//PPM in 
+  #define PPM_pin 2//PPM in 
   #define SDI_pin 5 //SDIO-D5 
   #define SCLK_pin 4 //SCK-D4
-  #define CS_pin 2//CS-D2
+  #define CS_pin 6//CS-D6
   //---------------------------------
-  #define  CS_on PORTD |= 0x04 //D2
-  #define  CS_off PORTD &= 0xFB //D2
+  #define  CS_on PORTD |= 0x40 //D6
+  #define  CS_off PORTD &= 0xBF //D6
   //
   #define  SCK_on PORTD |= 0x10//D4
   #define  SCK_off PORTD &= 0xEF//D4
@@ -116,6 +111,7 @@ if(if_calibration1&0x10){//do nothing
 //delay(10);// debug code wait for calib.
 _spi_write_adress(0x24,0x13);
 _spi_write_adress(0x26,0x3b);
+_spi_write_adress(0x28, 0x1F);// MAX 21mA ....1dbm added at the end of setup function
 _spi_write_adress(0x0F,0x00);//channel 0
 _spi_write_adress(0x02,0x02);
 while(_spi_read_adress(0x02)){
@@ -140,7 +136,7 @@ chanrow=id % 16;
 chanoffset=(id & 0xff) / 16;
 chancol=0;
 //PPM setup
-attachInterrupt(1, read_ppm, CHANGE);
+attachInterrupt(0, read_ppm, CHANGE);
 TCCR1A = 0;  //reset timer1
 TCCR1B = 0;
 TCCR1B |= (1 << CS11);  //set timer1 to increment every 1 us
@@ -235,6 +231,7 @@ _spi_write((id >>  0) & 0xff);
 _spi_write((id >>  8) & 0xff);
 _spi_write((id >>  16) & 0xff);
 _spi_write((id >>  24) & 0xff);
+
 for(i=0;i<8;i++){
 packet[0+2*i]=lowByte(Servo_data[i]);//low byte of servo timing(1000-2000us)
 packet[1+2*i]=highByte(Servo_data[i]);//high byte of servo timing(1000-2000us)
@@ -309,19 +306,4 @@ _spi_write(address);
 void A7105_reset(void) {
   _spi_write_adress(0x00,0x00); 
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-  
-
 
