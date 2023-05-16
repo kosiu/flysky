@@ -8,12 +8,10 @@
 //            Hasi for his arduino PPM decoder 
 //     Thanks to Philip Cowzer(Sadsack)for testing this version  
 // ************************************************************
-//Hardware: Atmega8/168/328- 8mhz
+//Hardware any M8/M168/M328 setup(arduino promini,duemilanove...as)
+// !!! take care when flashing the AVR, the A7105 RF chip supports 3.6V max !!!
+// !!!  use a 3.3V programmer or disconnect the RF module when flashing.    !!!
 //DIY "FlySky" RF module  http://www.rcgroups.com/forums/showthread.php?t=1921870
-
-
-#define SERIAL_BAUD_RATE 9600 //9600 baud serial port speed for debugging
-
 
 static const uint8_t A7105_regs[] = {
     0xff, 0x42, 0x00, 0x14, 0x00, 0xff, 0xff ,0x00, 0x00, 0x00, 0x00, 0x01, 0x21, 0x05, 0x00, 0x50,
@@ -83,7 +81,6 @@ void setup() {
   CS_on;//start CS high
   SDI_on;//start SDIO high
   SCK_off;//start sck low
-  Serial.begin(SERIAL_BAUD_RATE);//for debugging
   
   uint8_t i;
   uint8_t if_calibration1;
@@ -114,7 +111,6 @@ if_calibration1=_spi_read_adress(0x22);
 if(if_calibration1&0x10){//do nothing
 }
 }
-//delay(10);// debug code wait for calib.
 _spi_write_adress(0x24,0x13);
 _spi_write_adress(0x26,0x3b);
 _spi_write_adress(0x0F,0x00);//channel 0
@@ -124,7 +120,6 @@ vco_calibration0=_spi_read_adress(0x25);
 if(vco_calibration0&0x08){//do nothing
 }
 }
-//delay(10);//debug code wait for calib.
 _spi_write_adress(0x0F,0xA0);
 _spi_write_adress(0x02,0x02);
 while(_spi_read_adress(0x02)){
@@ -132,7 +127,6 @@ vco_calibration1=_spi_read_adress(0x25);
 if(vco_calibration1&0x08){//do nothing
 }
 }
-//delay(10);//debug code wait for calib.
 _spi_write_adress(0x25,0x08);
 _spi_write_adress(0x28,0x1F);//set power to 1db maximum
 _spi_strobe(0xA0);//stand-by strobe command
@@ -159,7 +153,8 @@ TCCR1B |= (1 << CS11);  //set timer1 to increment every 1 us
 
 //############ MAIN LOOP ##############
 void loop() {
-delayMicroseconds(1460);
+unsigned long pause;
+pause=micros();
 channel=tx_channels[chanrow][chancol]-chanoffset;
 _spi_strobe(0xA0);
 _spi_strobe(0xE0);
@@ -167,6 +162,7 @@ _spi_write_adress(0x0F,channel);
 Write_Packet(0x55);//servo_data timing can be updated in interrupt(ISR routine for decoding PPM signal)
 _spi_strobe(0xD0);
 chancol = (chancol + 1) % 16;
+while((micros()-pause)<1460);
 }
 
 void read_ppm() {
@@ -225,6 +221,7 @@ _spi_write((ida>>8)&0xff);
 _spi_write((ida>>0)&0xff);
  CS_on;
 }
+/*
 void A7105_ReadID(){
 uint8_t i;
  CS_off;
@@ -234,6 +231,7 @@ aid[i]=_spi_read();
 }
 CS_on;
 }
+*/
 //----------------------
 void Write_Packet(uint8_t init){//except adress(0x05)should sent to A7105 21 bytes totally)
 uint8_t i;
