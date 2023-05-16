@@ -3,7 +3,6 @@
 //               by midelic on RCgroups.com 
 //   Thanks to PhracturedBlue,ThierryRC,Dave1993,and the team
 //    of OpenLRS project and  Hasi for PPM encoder
-//                 Modified for PLC pinouts
 // **********************************************************
 //Hardware-M8/168/328-8/16Mhz
 #define SERIAL_BAUD_RATE 115200 //115.200 baud serial port speed
@@ -16,7 +15,7 @@
 #define PPM_FrLen 22500  //set the PPM frame length in microseconds (1ms = 1000µs)
 #define PPM_PulseLen 300  //set the pulse length
 #define onState 1  //set polarity of the pulses: 1 is positive, 0 is negative
-#define sigPin 0  //set PPM signal output pin on PLC board to servo 8
+#define sigPin 10  //set PPM signal output pin on the arduino
 //////////////////////////////////////////////////////////////////
 
 /*this array holds the servo values for the ppm signal
@@ -49,59 +48,61 @@ static const uint8_t tx_channels[16][16] = {
 };
 
  
- //PLC pins configuration
- #define GIO_pin 10//GIO-B2
- #define SDI_pin 11 //SDIO-B3
- #define SCLK_pin 12 //SCK-B4
- #define CS_pin 13//CS-B5
+ //Dave/mwii pins configuration
+ #define GIO_pin 6//GIO-D6
+ #define SDI_pin 5 //SDIO-D5 
+ #define SCLK_pin 4 //SCK-D4
+ #define CS_pin 2//CS-D2
  //#############################
- #define bind 0//bind plug use servo 8 for bind
- #define Servo1_OUT 7 //Servo1(D7)
- #define Servo2_OUT 6 //Servo2(D6)
- #define Servo3_OUT 5 //Servo3(D5)
- #define Servo4_OUT 4 //Servo4(D4)
- #define Servo5_OUT 3 //Servo5(D3)
- #define Servo6_OUT 2 //Servo6(D2)
- #define Servo7_OUT 1 //Servo7(D1)
- #define Servo8_OUT 0 //Servo8(D0)
+ #define bind A0//bind plug
+ #define Servo1_OUT 3 //Servo1(D3)
+ #define Servo2_OUT 7 //Servo2(D7)
+ #define Servo3_OUT 8 //Servo3(B0)
+ #define Servo4_OUT 9 //Servo4(B1)
+ #define Servo5_OUT 10 //Servo5(B2)
+ #define Servo6_OUT 11 //Servo6(B3)
+ #define Servo7_OUT 12 //Servo7(B4)
+ #define Servo8_OUT 13 //Servo8(B5)
   //##############################
- #define  CS_on PORTB |= 0x20 //B5
- #define  CS_off PORTB &= 0xDF //B5
- #define  SCK_on PORTB |= 0x10//B4
- #define  SCK_off PORTB &= 0xEF//B4
- #define  SDI_on PORTB |= 0x08 //B3
- #define  SDI_off PORTB &= 0xF7 //B3
- #define  GIO_on PORTB |=0x04//B2 
+ #define  CS_on PORTD |= 0x04 //D2
+ #define  CS_off PORTD &= 0xFB //D2
+ #define  SCK_on PORTD |= 0x10//D4
+ #define  SCK_off PORTD &= 0xEF//D4
+ #define  SDI_on PORTD |= 0x20 //D5
+ #define  SDI_off PORTD &= 0xDF //D5
+ #define  GIO_on PORTD |=0x40//D6 
   //#####################################
- #define  GIO_1 (PINB & 0x04) == 0x04 //B2 input
- #define  GIO_0 (PINB & 0x04) == 0x00 //B2
- #define  SDI_1 (PINB & 0x08) == 0x08 //B3
- #define  SDI_0 (PINB & 0x08) == 0x00 //B3
+ #define  GIO_1 (PIND & 0x40) == 0x40 //D6 input
+ #define  GIO_0 (PIND & 0x40) == 0x00 //D6
+ #define  SDI_1 (PIND & 0x20) == 0x20 //D5
+ #define  SDI_0 (PIND & 0x20) == 0x00 //D5
 //############################################
- #define RED_LED_pin A4
- #define Red_LED_ON  PORTC |= _BV(4);
- #define Red_LED_OFF  PORTC &= ~_BV(4);
+
+ //#define RED_LED_pin A3
+ #define Red_LED_ON  PORTB |= _BV(5);
+ #define Red_LED_OFF  PORTB &= ~_BV(5);
  #define NOP() __asm__ __volatile__("nop")
+  
  //#######################################
- #define Servo1_OUT_HIGH PORTD |= _BV(7) //Servo1(D7)
- #define Servo2_OUT_HIGH PORTD |= _BV(6) //Servo2(D6)
- #define Servo3_OUT_HIGH PORTD |= _BV(5) //Servo3(D5)
- #define Servo4_OUT_HIGH PORTD |= _BV(4) //Servo4(D4)
- #define Servo5_OUT_HIGH PORTD |= _BV(3) //Servo5(D3)
- #define Servo6_OUT_HIGH PORTD |= _BV(2) //Servo6(D@)
- #define Servo7_OUT_HIGH PORTD |= _BV(1) //Servo7(D1)
- #define Servo8_OUT_HIGH PORTD |= _BV(0)//Servo8(D0)
+ #define Servo1_OUT_HIGH PORTD |= _BV(3) //Servo1(D3)
+ #define Servo2_OUT_HIGH PORTD |= _BV(7) //Servo2(D7)
+ #define Servo3_OUT_HIGH PORTB |= _BV(0) //Servo3(B0)
+ #define Servo4_OUT_HIGH PORTB |= _BV(1) //Servo4(B1)
+ #define Servo5_OUT_HIGH PORTB |= _BV(2) //Servo5(B2)
+ #define Servo6_OUT_HIGH PORTB |= _BV(3) //Servo6(B3)
+ #define Servo7_OUT_HIGH PORTB |= _BV(4) //Servo7(B4)
+ #define Servo8_OUT_HIGH PORTB |= _BV(5)//Servo8(B5)
  //#######################################################
- #define Servo_Ports_LOW PORTD &= 0x00 //all servos low
+ #define Servo_Ports_LOW PORTD &= 0x77; PORTB &= 0xc0;//all servos low
  //***************************************************************************
-//For generate PPM signal jumper between servo1 and servo3(pin D7 and pin D5(B0)
+//For generate PPM signal jumper between servo1 and servo3(pin D3 and pin D8(B0)
 //default is with servo output.
-//PPm output appears on Servo8 sig pin
+//PPm output remain the same on pin D10(B2)
 //For binding jumper between A0(C0) and gnd  as any normal rx.
 //***************************************************************************
 //########## Variables #################
 static uint32_t id;
-static uint8_t txid[4];
+static uint8_t txid[5];
 static uint16_t word_temp;
 static uint8_t chanrow;
 static uint8_t chancol;
@@ -119,7 +120,8 @@ static byte cur_chan_numb=0;
 
 void setup(){//setup()
 
-  pinMode(RED_LED_pin, OUTPUT); 
+  //pinMode(RED_LED_pin, OUTPUT); 
+  DDRB |=0b00100000;
   //RF module pins
   pinMode(GIO_pin, INPUT);//GIO 1
   pinMode(SDI_pin, OUTPUT);//SDI   SDIO 
@@ -310,8 +312,7 @@ while(1){
 if((micros() - pause)>2000){
 Red_LED_OFF;
 chancol = (chancol + 1) % 16;//advance to the next next packet most likely you missed the next one.
-channel=tx_channels[chanrow][chancol]-chanoffset;
-channel-=1;
+channel=tx_channels[chanrow][chancol]-1-chanoffset;
 break;
 }
 if (GIO_1){
