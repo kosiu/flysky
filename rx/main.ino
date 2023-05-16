@@ -1,7 +1,7 @@
 // **********************************************************
 // ******************   Flysky Rx Code-PPM  *******************
 //               by midelic on RCgroups.com 
-//   Thanks to PhracturedBlue,ThierryRC,Dave1993,and the team
+//   Thanks to PhracturedBlue,ThierryRC,Dave1993,the team
 //    of OpenLRS project and  Hasi for PPM encoder
 //  Added PPM encoder and tested by Philip Cowzer(Sadsack) 
 // **********************************************************
@@ -12,7 +12,7 @@
 //////////////////////CONFIGURATION///////////////////////////////
 #define chanel_number 8  //set the number of chanels
 #define default_servo_value 1500  //set the default servo value
-#define PPM_FrLen 22500  //set the PPM frame length in microseconds (1ms = 1000µs)
+#define PPM_FrLen 22500  //set the PPM frame length in microseconds (1ms = 1000Âµs)
 #define PPM_PulseLen 300  //set the pulse length
 #define onState 1  //set polarity of the pulses: 1 is positive, 0 is negative
 #define sigPin 10  //set PPM signal output pin on the arduino
@@ -92,7 +92,7 @@ ISR(TIMER1_COMPA_vect){  //leave this alone
   
   if(state) {  //start pulse
     digitalWrite(sigPin, onState);
-    OCR1A = PPM_PulseLen * 2;
+    OCR1A = PPM_PulseLen;
     state = false;
   }
   else{  //end pulse and calculate when to start the next pulse
@@ -105,11 +105,11 @@ ISR(TIMER1_COMPA_vect){  //leave this alone
     if(cur_chan_numb >= chanel_number){
       cur_chan_numb = 0;
       calc_rest = calc_rest + PPM_PulseLen;// 
-      OCR1A = (PPM_FrLen - calc_rest) * 2;
+      OCR1A = (PPM_FrLen - calc_rest);
       calc_rest = 0;
     }
     else{
-      OCR1A = (ppm[cur_chan_numb] - PPM_PulseLen) * 2;
+      OCR1A = (ppm[cur_chan_numb] - PPM_PulseLen);
       calc_rest = calc_rest + ppm[cur_chan_numb];
       cur_chan_numb++;
     }     
@@ -177,13 +177,14 @@ if(vco_calibration1&0x08){//do nothing
 _spi_write_adress(0x25,0x08);
 _spi_strobe(0xA0);//stand-by
 bind_Flysky();
+//id=(packet[1] | ((uint32_t)packet[2]<<8) | ((uint32_t)packet[3]<<16) | ((uint32_t)packet[4]<<24));
 Serial.print(" ");
 id=(txid[0] | ((uint32_t)txid[1]<<8) | ((uint32_t)txid[2]<<16) | ((uint32_t)txid[3]<<24));
 Serial.print(id,HEX);
 chanrow=id%16;
 chanoffset=(id & 0xff) / 16;
 chancol=0;
-if(chanoffset > 9) chanoffset = 9;//from sloped soarer findings, bug in flysky protocol
+if(chanoffset > 9) chanoffset = 9;//from slope soarer findings, bug in flysky protocol
 //initiallize default ppm values
   for(int i=0; i<chanel_number; i++){
     ppm[i]= default_servo_value;
@@ -196,10 +197,10 @@ if(chanoffset > 9) chanoffset = 9;//from sloped soarer findings, bug in flysky p
   TCCR1A = 0; // set entire TCCR1 register to 0
   TCCR1B = 0;
   
-  OCR1A = 100;  // compare match register, change this
+  OCR1A = 50;  // compare match register, change this
   TCCR1B |= (1 << WGM12);  // turn on CTC mode
-  TCCR1B |= (1 << CS11);  // 8 prescaler: 0,5 microseconds at 16mhz
-  TIMSK1 |= (1 << OCIE1A); // enable timer compare interrupt
+  TCCR1B |= (1 << CS11);  // 8 prescaler: 1 microseconds at 8 mhz
+  TIMSK |= (1 << OCIE1A); // enable timer compare interrupt
   sei();
 }
 
@@ -234,6 +235,7 @@ continue;
 }
 Red_LED_ON;
 uint8_t i;
+cli();
 for (i=0;i<8;i++){
 word_temp=(packet[5+(2*i)]+256*packet[6+(2*i)]);
 if ((word_temp>900) && (word_temp<2200))
@@ -242,6 +244,7 @@ Servo_data[i]=word_temp;
 //Serial.print(Servo_data[i]);
 //Serial.print(" ");
 ppm[i]=Servo_data[i];// <<< Added By Philip Cowzer AKA 'SadSack' and few deletions with Lots of Cuts&Pastes! Arduino IDE is pony
+sei();
 }
 break;
 }
@@ -401,3 +404,4 @@ _spi_write(address);
 void A7105_reset(void) {
   _spi_write_adress(0x00,0x00); 
 }
+
