@@ -1,25 +1,21 @@
 // **********************************************************
 // ******************   Flysky Rx Code-PPM  *******************
 //               by midelic on RCgroups.com 
-//   Thanks to PhracturedBlue,ThierryRC,Dave1993,the team
+//   Thanks to PhracturedBlue,ThierryRC,Dave1993,and the team
 //    of OpenLRS project and  Hasi for PPM encoder
 //  Added PPM encoder and tested by Philip Cowzer(Sadsack) 
 // **********************************************************
 
-#define SERIAL_BAUD_RATE 115200 //115.200 baud serial port speed
+//#define SERIAL_BAUD_RATE 115200 //115.200 baud serial port speed DW
 #include <EEPROM.h>
-
-#define FAILSAFE
-//#define DEBUG
 
 //////////////////////CONFIGURATION///////////////////////////////
 #define chanel_number 8  //set the number of chanels
 #define default_servo_value 1500  //set the default servo value
-#define PPM_FrLen 22500  //set the PPM frame length in microseconds (1ms = 1000µs)
+#define PPM_FrLen 22500  //set the PPM frame length in microseconds (1ms = 1000ï¿½s)
 #define PPM_PulseLen 300  //set the pulse length
 #define onState 1  //set polarity of the pulses: 1 is positive, 0 is negative
-#define sigPin 11  //set PPM signal output pin on the arduino  
-//Cheapduino: D11
+#define sigPin 10  //set PPM signal output pin on the arduino
 //////////////////////////////////////////////////////////////////
 
 /*this array holds the servo values for the ppm signal
@@ -52,30 +48,29 @@ static const uint8_t tx_channels[16][16] = {
 };
  
  
-//Cheapduino
-#define GIO_pin 9     //GIO - D9 - PB1
-#define SDI_pin 10    //SDIO - D10 - PB2 
-#define SCLK_pin A4   //SCK - A4 - PC4
-#define CS_pin A0     //CS - A0 - PC0
-//------------------
-#define  CS_on PORTC |= 0x01 //A0
-#define  CS_off PORTC &= 0xFE //A0
-#define  SCK_on PORTC |= 0x10//A4
-#define  SCK_off PORTC &= 0xEF//A4
-#define  SDI_on PORTB |= 0x04 //D10 
-#define  SDI_off PORTB &= 0xFB //D10 
-#define  GIO_on PORTB |=0x02//D9 
-//------------------------------------
-#define  GIO_1 (PINB & 0x02) == 0x02 //D9 input
-#define  GIO_0 (PINB & 0x02) == 0x00 //D9
-#define  SDI_1 (PINB & 0x04) == 0x04 //D10
-#define  SDI_0 (PINB & 0x04) == 0x00 //D10
+ //Dave/mwii pins configuration
+ #define GIO_pin 6//GIO-D6
+ #define SDI_pin 5 //SDIO-D5 
+ #define SCLK_pin 4 //SCK-D4
+ #define CS_pin 2//CS-D2
+  //------------------
+ #define  CS_on PORTB |= 0x04 //D2
+ #define  CS_off PORTB &= 0xFB //D2
+ #define  SCK_on PORTB |= 0x10//D4
+ #define  SCK_off PORTB &= 0xEF//D4
+ #define  SDI_on PORTB |= 0x20 //D5
+ #define  SDI_off PORTB &= 0xDF //D5
+ #define  GIO_on PORTB |=0x40//D6 
+  //------------------------------------
+ #define  GIO_1 (PINB & 0x40) == 0x40 //D6 input
+ #define  GIO_0 (PINB & 0x40) == 0x00 //D6
+ #define  SDI_1 (PINB & 0x20) == 0x20 //D5
+ #define  SDI_0 (PINB & 0x20) == 0x00 //D5
 //----------------------------------------
-
-#define RED_LED_pin 13 //std arduino LED
-#define Red_LED_ON  PORTB |= _BV(5);
-#define Red_LED_OFF  PORTB &= ~_BV(5);
-#define NOP() __asm__ __volatile__("nop")
+ //#define RED_LED_pin A3
+ //#define Red_LED_ON  PORTC |= _BV(3);
+ //#define Red_LED_OFF  PORTC &= ~_BV(3);
+ #define NOP() __asm__ __volatile__("nop")
   
 //########## Variables #################
 static uint32_t id;
@@ -97,7 +92,7 @@ ISR(TIMER1_COMPA_vect){  //leave this alone
   
   if(state) {  //start pulse
     digitalWrite(sigPin, onState);
-    OCR1A = PPM_PulseLen;
+    OCR1A = PPM_PulseLen * 2;
     state = false;
   }
   else{  //end pulse and calculate when to start the next pulse
@@ -110,11 +105,11 @@ ISR(TIMER1_COMPA_vect){  //leave this alone
     if(cur_chan_numb >= chanel_number){
       cur_chan_numb = 0;
       calc_rest = calc_rest + PPM_PulseLen;// 
-      OCR1A = (PPM_FrLen - calc_rest)* 2;
+      OCR1A = (PPM_FrLen - calc_rest) * 2;
       calc_rest = 0;
     }
     else{
-      OCR1A = (ppm[cur_chan_numb] - PPM_PulseLen)* 2;
+      OCR1A = (ppm[cur_chan_numb] - PPM_PulseLen) * 2;
       calc_rest = calc_rest + ppm[cur_chan_numb];
       cur_chan_numb++;
     }     
@@ -124,7 +119,7 @@ ISR(TIMER1_COMPA_vect){  //leave this alone
 void setup(){//setup()
 
   //pinMode(GREEN_LED_pin, OUTPUT);;  
-  pinMode(RED_LED_pin, OUTPUT); 
+  //pinMode(RED_LED_pin, OUTPUT); 
   //RF module pins
   pinMode(GIO_pin, INPUT);//GIO 1
   pinMode(SDI_pin, OUTPUT);//SDI   SDIO 
@@ -133,9 +128,8 @@ void setup(){//setup()
   CS_on;//start CS high
   SDI_on;//start SDIO high
   SCK_off;//start sck low
-#if defined(DEBUG)
-  Serial.begin(SERIAL_BAUD_RATE);//for debug 
-#endif
+  //Serial.begin(SERIAL_BAUD_RATE);//for debug 
+
   uint8_t i;
   uint8_t if_calibration1;
   uint8_t vco_calibration0;
@@ -144,12 +138,10 @@ void setup(){//setup()
   _spi_write_adress(0x00,0x00);//reset A7105
   A7105_WriteID(0x5475c52A);//A7105 id
   A7105_ReadID();
-#if defined(DEBUG)  
   Serial.print(aid[0],HEX);
   Serial.print(aid[1],HEX);
   Serial.print(aid[2],HEX);
   Serial.print(aid[3],HEX);
-#endif 
   
   for (i = 0; i < 0x33; i++){
         if(A7105_regs[i] != 0xff)
@@ -185,27 +177,28 @@ if(vco_calibration1&0x08){//do nothing
 _spi_write_adress(0x25,0x08);
 _spi_strobe(0xA0);//stand-by
 bind_Flysky();
-id=(txid[0] | ((uint32_t)txid[1]<<8) | ((uint32_t)txid[2]<<16) | ((uint32_t)txid[3]<<24));
-#if defined(DEBUG) 
 Serial.print(" ");
+id=(txid[0] | ((uint32_t)txid[1]<<8) | ((uint32_t)txid[2]<<16) | ((uint32_t)txid[3]<<24));
 Serial.print(id,HEX);
-#endif
 chanrow=id%16;
 chanoffset=(id & 0xff) / 16;
 chancol=0;
-if(chanoffset > 9) chanoffset = 9;//from slope soarer findings, bug in flysky protocol
+if(chanoffset > 9) chanoffset = 9;//from sloped soarer findings, bug in flysky protocol
 //initiallize default ppm values
   for(int i=0; i<chanel_number; i++){
     ppm[i]= default_servo_value;
   }
+
   pinMode(sigPin, OUTPUT);
   digitalWrite(sigPin, !onState);  //set the PPM signal pin to the default state (off)
+  
   cli();
-  TCCR1A = 0; // set entire TCCR1 register to 0
-  TCCR1B = 0;
+  TCCR1 = 0; // set entire TCCR1 register to 0
+  
+  
   OCR1A = 100;  // compare match register, change this
-  TCCR1B |= (1 << WGM12);  // turn on CTC mode
-  TCCR1B |= (1 << CS11);  // 8 prescaler: 1 microseconds at 8 mhz
+  TCCR0B |= (1 << WGM02);  // turn on CTC mode
+  TCCR0B |= (1 << CS11);  // 8 prescaler: 0,5 microseconds at 16mhz
   TIMSK |= (1 << OCIE1A); // enable timer compare interrupt
   sei();
 }
@@ -219,34 +212,11 @@ _spi_write_adress(0x0F,channel);
 _spi_strobe(0xC0);
 chancol = (chancol + 1) % 16;
 unsigned long pause;
-#if defined FAILSAFE
-static unsigned long last_rx;
-#endif
 uint8_t x;
 pause=micros();
 while(1){
-
-//failsafe
-    #if defined FAILSAFE
-      uint8_t n;
-      if((millis() - last_rx)>1500){    //fs delay 1500ms
-      // enter your fs code here
-      Servo_data[2]=1050;  //ER9x, thr min, rest center
-      ppm[2] = 1050;
-      for (n=0;n<2;n++){
-        Servo_data[n]=1500;
-        ppm[n] = 1500; }
-      for (n=3;n<8;n++){
-        Servo_data[n]=1500;
-        ppm[n] = 1500; }  
-      #if defined(DEBUG)
-      Serial.println("failsafe!");
-      #endif
-      }
-   #endif  
-  
 if((micros() - pause)>2000){
-Red_LED_OFF;
+//Red_LED_OFF;
 chancol = (chancol + 1) % 16;
 channel=tx_channels[chanrow][chancol]-1-chanoffset;
 break;
@@ -262,26 +232,17 @@ Read_Packet();
 if (!(packet[1]==txid[0])&& !(packet[2]==txid[1])&& !(packet[3]==txid[2])&& !(packet[4]==txid[3])){
 continue;
 }
-Red_LED_ON;
-#if defined FAILSAFE
-last_rx=millis(); //reset failsafe timer
-#endif
+//Red_LED_ON;
 uint8_t i;
-cli();
 for (i=0;i<8;i++){
 word_temp=(packet[5+(2*i)]+256*packet[6+(2*i)]);
 if ((word_temp>900) && (word_temp<2200))
 Servo_data[i]=word_temp;
+//Serial.print(" ");
+//Serial.print(Servo_data[i]);
+//Serial.print(" ");
 ppm[i]=Servo_data[i];// <<< Added By Philip Cowzer AKA 'SadSack' and few deletions with Lots of Cuts&Pastes! Arduino IDE is pony
-#if defined(DEBUG)
-Serial.print(" ");
-Serial.print(Servo_data[i]);
-#endif
-sei();
 }
-#if defined(DEBUG)
-Serial.println();
-#endif
 break;
 }
 }
@@ -298,10 +259,10 @@ _spi_strobe(0xC0);
 while(counter1){//counter for 5 sec.
 delay(10);//wait 10ms
 if (bitRead(counter1,2)==1){ 
-Red_LED_ON;
+//Red_LED_ON;
 }
 if(bitRead(counter1,2)==0){
-Red_LED_OFF;
+//Red_LED_OFF;
 }
 if (GIO_0){
 uint8_t x;
