@@ -32,6 +32,29 @@ packet[i]=_spi_read();
 CS_on;
 }
 //---------------------------------
+
+void Write_Packet(uint8_t init){//except adress(0x05)should sent to A7105 21 bytes totally)
+uint8_t i;
+CS_off;
+_spi_write(0x05);//TX/RX FIFO adress
+_spi_write(init);//0xaa or 0x55(depend on bind packet or data packet)
+_spi_write((id >>  0) & 0xff);
+_spi_write((id >>  8) & 0xff);
+_spi_write((id >>  16) & 0xff);
+_spi_write((id >>  24) & 0xff);
+
+for(i=0;i<8;i++){
+cli();
+packet[0+2*i]=lowByte(Servo_data[i]);//low byte of servo timing(1000-2000us)
+packet[1+2*i]=highByte(Servo_data[i]);//high byte of servo timing(1000-2000us)
+sei();
+_spi_write(packet[0+2*i]);
+_spi_write(packet[1+2*i]);
+}
+
+CS_on;
+}
+
 //-------------------------------------- 
 void _spi_write(uint8_t command) {  
   uint8_t n=8; 
