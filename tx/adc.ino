@@ -1,3 +1,4 @@
+
 //Analog input config
 //ArrayPosition AdcIn What
 //            0   5   Right X
@@ -38,49 +39,115 @@ ISR(ADC_vect) {
     ADCSRA |= (1<<ADSC); // start next conversion
     
 }
+bool Ain::calibration(bool button){
+  enum State { firstButtonPress, firstButtonRelease, secondButtonPress };
+  static State state = firstButtonPress;
 
+  if((millis() % 64 ) > 32) rLedOn(); else rLedOff();
 
-void Adc::out(){
+  memCopy();
+
+  if(button){
+    if (state == firstButtonRelease) {
+      state =  secondButtonPress;
+    }
+    
+    //set center position
+    for (unsigned char i=0; i<6; i++) {
+      if (chCfg[i].noSegments == 2) chCfg[i].inPoint[1] = signals[i]/count[i];
+    }    
+  } else {
+    if (state == firstButtonPress) {
+      state =  firstButtonRelease;
+      //set current values
+      for (unsigned char i=0; i<6; i++) {
+        int val = signals[i]/count[i];
+        chCfg[i].inPoint[0] = val;
+        chCfg[i].inPoint[chCfg[i].noSegments] = val;
+      }    
+    }
+    if (state == secondButtonPress) {
+      state =  firstButtonPress;
+      if (cDbgCal) printChConfig();
+      for (unsigned char i=0; i<6; i++) {
+        EEPROM.write((i*6+0), (chCfg[i].inPoint[0] >> 0) & 0xff);
+        EEPROM.write((i*6+1), (chCfg[i].inPoint[0] >> 8) & 0xff);
+        EEPROM.write((i*6+2), (chCfg[i].inPoint[1] >> 0) & 0xff);
+        EEPROM.write((i*6+3), (chCfg[i].inPoint[1] >> 8) & 0xff);
+        EEPROM.write((i*6+4), (chCfg[i].inPoint[2] >> 0) & 0xff);
+        EEPROM.write((i*6+5), (chCfg[i].inPoint[2] >> 8) & 0xff);        
+      }
+      return false;
+    }
+    //set minimum maximum
+    for (unsigned char i=0; i<6; i++) {
+      int val = signals[i]/count[i];
+      if ((val - 10 ) > chCfg[i].inPoint[chCfg[i].noSegments]){
+        chCfg[i].inPoint[chCfg[i].noSegments] = val - 10;
+      } else if ((val + 10 ) < chCfg[i].inPoint[0]){
+        chCfg[i].inPoint[0] = val + 10;
+      }
+    }
+  }
+  return true;
+}
+
+void Ain::printChConfig(){
+  for (unsigned char i=0; i<6; i++) {
+      Serial.print("Ch ");
+      Serial.print(i);
+      Serial.print(" ");      
+      Serial.print(chCfg[i].isReversed);
+      Serial.print(" ");
+      Serial.print(chCfg[i].inPoint[0]);
+      Serial.print(" ");
+      Serial.print(chCfg[i].inPoint[1]);
+      Serial.print(" ");
+      Serial.println(chCfg[i].inPoint[2]);      
+  }
+  
+}
+
+void Ain::out(){
 
     memCopy();
-    
+     
     //calibration parameters
-    unsigned char segmnt[6]  = {    2,   2,   1,   1,   1,   1};
-             int inSeg[3][6] = { {  8,  80,  10,  10,   8,   8},
-                                 {540, 562, 890, 980, 900, 870},
-                                 {888, 920,   0,   0,   0,   0}};
-             int outSeg[1][6]= { {500, 500,   0,   0,   0,   0}};
+    if(cDbgAdc) Serial.print("Adc: ");
     for (unsigned char i=0; i<6; i++) {
       long int outVal;                            
       long int lowLim;
       int segMax = 1000;
       int segMin = 1000;
 
+      if(cDbgAdc) Serial.print(signals[i]/count[i]);
+      if(cDbgAdc) Serial.print(" ");
       
-      if( signals[i] >= ( (long int)inSeg[ segmnt[i] ][i] * count[i]) ) {
+      if( signals[i] >= ( (long int)chCfg[i].inPoint[chCfg[i].noSegments] * count[i]) ) {
         outVal=2000;
       } else
       {
-        for ( unsigned char s = segmnt[i]; s > 0; s-- ) {
+        for ( unsigned char s = chCfg[i].noSegments; s > 0; s-- ) {
           segMax = segMin;
-          if ( s > 1 ) { segMin = outSeg[(s-2)][i]; } else { segMin = 0; }
-          if ( signals[i] >= ( lowLim = (long int)inSeg[s-1][i] * count[i]) ) {
+          if ( s > 1 ) { segMin = chCfg[i].outPoint[(s-2)]; } else { segMin = 0; }
+          if ( signals[i] >= ( lowLim = (long int)chCfg[i].inPoint[s-1] * count[i]) ) {
             
             outVal = signals[i] - lowLim;
-            outVal /= ( (long int)(inSeg[s][i] - inSeg[s-1][i] ) * count[i] ) / (segMax-segMin);
+            outVal /= ( (long int)(chCfg[i].inPoint[s] - chCfg[i].inPoint[s-1] ) * count[i] ) / (segMax-segMin);
             outVal += 1000 + segMin;
             break;
           }
         }
       }
-      if ( signals[i] < ( (long int)inSeg[0][i] * count[i]) ) {
+      if ( signals[i] < ( (long int)chCfg[i].inPoint[0] * count[i]) ) {
         outVal=1000;
       }
+      if (chCfg[i].isReversed) outVal = 3000 - outVal;
       signals[i] = outVal; //& 0xfffc;
     };
 }
 
-void Adc::memCopy() {
+void Ain::memCopy() {
     //copy and clear memory block from ADC interupt routine
     noInterrupts(); signals[0] = adc0; count[0] = cnt0; adc0 = 0; cnt0 = 0; interrupts();
     noInterrupts(); signals[1] = adc1; count[1] = cnt1; adc1 = 0; cnt1 = 0; interrupts();
@@ -90,9 +157,9 @@ void Adc::memCopy() {
     noInterrupts(); signals[5] = adc5; count[5] = cnt5; adc5 = 0; cnt5 = 0; interrupts();
 }
 
-void Adc::init(){
+void Ain::init(){
     ADMUX  = 0b11000000; //internal source voltage - channel0
-    ADCSRA = 0b11011110; //interupt on
+    ADCSRA = 0b11011100; //interupt on
     ADCSRB = 0b00000000;
 }
 
