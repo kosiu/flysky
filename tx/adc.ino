@@ -113,7 +113,7 @@ void Ain::out(){
     memCopy();
      
     //calibration parameters
-    if(cDbgAdc) Serial.print("Adc: ");
+    if(cDbgAdc) Serial.print("");
     for (unsigned char i=0; i<6; i++) {
       long int outVal;                            
       long int lowLim;

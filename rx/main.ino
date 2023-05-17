@@ -30,17 +30,17 @@ const bool cDbgOut = true;
 
 //pins configuration
 //radio
-static const int GIO_pin   = 13;
-static const int SDI_pin   = 19;
-static const int SCLK_pin  = 18;
-static const int CS_pin    = 17;
+static const int GIO_pin   = 6;
+static const int SDI_pin   = 5;
+static const int SCLK_pin  = 4;
+static const int CS_pin    = 2;
 //IO
-static const int bind_pin  = 2;
-static const int RLED_pin  = 21;
-static const int MOT1_pin  = 12;
-static const int MOT2_pin  = 11;
-static const int MOT3a_pin = 9;
-static const int MOT3b_pin = 10;
+static const int bind_pin  = 2;//
+static const int RLED_pin  = 17;
+static const int MOT1_pin  = 7;
+static const int MOT2_pin  = 8;
+static const int MOT3a_pin = 10;
+static const int MOT3b_pin = 9;
 
 //timers has to be divided by 16
 const uint32_t failsafeTimeout = 200;     // after this time failsafe mode is set
