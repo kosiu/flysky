@@ -1,224 +1,385 @@
-
 // **********************************************************
-// ******************   Flysky Tx Code   ********************
-//               by midelic on RCgroups.com 
-//            Thanks to PhracturedBlue,ThierryRC
-//            Hasi for his arduino PPM decoder 
-//     Thanks to Philip Cowzer(Sadsack)for testing this version  
-// ************************************************************
-//Hardware any M8/M168/M328 setup(arduino promini,duemilanove...aso)
-// !!! take care when flashing the AVR, the A7105 RF chip supports 3.6V max !!!
-// !!!  use a 3.3V programmer or disconnect the RF module when flashing.    !!!
-//DIY "FlySky" RF module  http://www.rcgroups.com/forums/showthread.php?t=1921870
+// ******************    Flysky Rx Code   *******************
+//               by midelic on RCgroups.com
+//   Thanks to PhracturedBlue,ThierryRC,Dave1993,and the team
+//    of OpenLRS project and  Hasi for PPM encoder
+//                 Modified by Jacek Kosek
+// **********************************************************
+#include <optiboot.h>
+#define DEBUG
+#define SERIAL_BAUD_RATE 115200 //115.200 baud serial port speed
 
 
-#define SERIAL_BAUD_RATE 115200 //
-//#define DEBUG
-
-static const uint8_t A7105_regs[] = {
-    0xff, 0x42, 0x00, 0x14, 0x00, 0xff, 0xff ,0x00, 0x00, 0x00, 0x00, 0x01, 0x21, 0x05, 0x00, 0x50,
-    0x9e, 0x4b, 0x00, 0x02, 0x16, 0x2b, 0x12, 0x00, 0x62, 0x80, 0x80, 0x00, 0x0a, 0x32, 0xc3, 0x0f,
-    0x13, 0xc3, 0x00, 0xff, 0x00, 0x00, 0x3b, 0x00, 0x17, 0x47, 0x80, 0x03, 0x01, 0x45, 0x18, 0x00,
-    0x01, 0x0f, 0xff,
-};
+//this table can be local to function: listenNextChannel() it's here to dont blur the code
+//it stores FlySky channels mapping tabele
 static const uint8_t tx_channels[16][16] = {
-  {0x0a, 0x5a, 0x14, 0x64, 0x1e, 0x6e, 0x28, 0x78, 0x32, 0x82, 0x3c, 0x8c, 0x46, 0x96, 0x50, 0xa0},
-  {0xa0, 0x50, 0x96, 0x46, 0x8c, 0x3c, 0x82, 0x32, 0x78, 0x28, 0x6e, 0x1e, 0x64, 0x14, 0x5a, 0x0a},
-  {0x0a, 0x5a, 0x50, 0xa0, 0x14, 0x64, 0x46, 0x96, 0x1e, 0x6e, 0x3c, 0x8c, 0x28, 0x78, 0x32, 0x82},
-  {0x82, 0x32, 0x78, 0x28, 0x8c, 0x3c, 0x6e, 0x1e, 0x96, 0x46, 0x64, 0x14, 0xa0, 0x50, 0x5a, 0x0a},
-  {0x28, 0x78, 0x0a, 0x5a, 0x50, 0xa0, 0x14, 0x64, 0x1e, 0x6e, 0x3c, 0x8c, 0x32, 0x82, 0x46, 0x96},
-  {0x96, 0x46, 0x82, 0x32, 0x8c, 0x3c, 0x6e, 0x1e, 0x64, 0x14, 0xa0, 0x50, 0x5a, 0x0a, 0x78, 0x28},
-  {0x50, 0xa0, 0x28, 0x78, 0x0a, 0x5a, 0x1e, 0x6e, 0x3c, 0x8c, 0x32, 0x82, 0x46, 0x96, 0x14, 0x64},
-  {0x64, 0x14, 0x96, 0x46, 0x82, 0x32, 0x8c, 0x3c, 0x6e, 0x1e, 0x5a, 0x0a, 0x78, 0x28, 0xa0, 0x50},
-  {0x50, 0xa0, 0x46, 0x96, 0x3c, 0x8c, 0x28, 0x78, 0x0a, 0x5a, 0x32, 0x82, 0x1e, 0x6e, 0x14, 0x64},
-  {0x64, 0x14, 0x6e, 0x1e, 0x82, 0x32, 0x5a, 0x0a, 0x78, 0x28, 0x8c, 0x3c, 0x96, 0x46, 0xa0, 0x50},
-  {0x46, 0x96, 0x3c, 0x8c, 0x50, 0xa0, 0x28, 0x78, 0x0a, 0x5a, 0x1e, 0x6e, 0x32, 0x82, 0x14, 0x64},
-  {0x64, 0x14, 0x82, 0x32, 0x6e, 0x1e, 0x5a, 0x0a, 0x78, 0x28, 0xa0, 0x50, 0x8c, 0x3c, 0x96, 0x46},
-  {0x46, 0x96, 0x0a, 0x5a, 0x3c, 0x8c, 0x14, 0x64, 0x50, 0xa0, 0x28, 0x78, 0x1e, 0x6e, 0x32, 0x82},
-  {0x82, 0x32, 0x6e, 0x1e, 0x78, 0x28, 0xa0, 0x50, 0x64, 0x14, 0x8c, 0x3c, 0x5a, 0x0a, 0x96, 0x46},
-  {0x46, 0x96, 0x0a, 0x5a, 0x50, 0xa0, 0x3c, 0x8c, 0x28, 0x78, 0x1e, 0x6e, 0x32, 0x82, 0x14, 0x64},
-  {0x64, 0x14, 0x82, 0x32, 0x6e, 0x1e, 0x78, 0x28, 0x8c, 0x3c, 0xa0, 0x50, 0x5a, 0x0a, 0x96, 0x46},
+    {0x0a, 0x5a, 0x14, 0x64, 0x1e, 0x6e, 0x28, 0x78, 0x32, 0x82, 0x3c, 0x8c, 0x46, 0x96, 0x50, 0xa0},
+    {0xa0, 0x50, 0x96, 0x46, 0x8c, 0x3c, 0x82, 0x32, 0x78, 0x28, 0x6e, 0x1e, 0x64, 0x14, 0x5a, 0x0a},
+    {0x0a, 0x5a, 0x50, 0xa0, 0x14, 0x64, 0x46, 0x96, 0x1e, 0x6e, 0x3c, 0x8c, 0x28, 0x78, 0x32, 0x82},
+    {0x82, 0x32, 0x78, 0x28, 0x8c, 0x3c, 0x6e, 0x1e, 0x96, 0x46, 0x64, 0x14, 0xa0, 0x50, 0x5a, 0x0a},
+    {0x28, 0x78, 0x0a, 0x5a, 0x50, 0xa0, 0x14, 0x64, 0x1e, 0x6e, 0x3c, 0x8c, 0x32, 0x82, 0x46, 0x96},
+    {0x96, 0x46, 0x82, 0x32, 0x8c, 0x3c, 0x6e, 0x1e, 0x64, 0x14, 0xa0, 0x50, 0x5a, 0x0a, 0x78, 0x28},
+    {0x50, 0xa0, 0x28, 0x78, 0x0a, 0x5a, 0x1e, 0x6e, 0x3c, 0x8c, 0x32, 0x82, 0x46, 0x96, 0x14, 0x64},
+    {0x64, 0x14, 0x96, 0x46, 0x82, 0x32, 0x8c, 0x3c, 0x6e, 0x1e, 0x5a, 0x0a, 0x78, 0x28, 0xa0, 0x50},
+    {0x50, 0xa0, 0x46, 0x96, 0x3c, 0x8c, 0x28, 0x78, 0x0a, 0x5a, 0x32, 0x82, 0x1e, 0x6e, 0x14, 0x64},
+    {0x64, 0x14, 0x6e, 0x1e, 0x82, 0x32, 0x5a, 0x0a, 0x78, 0x28, 0x8c, 0x3c, 0x96, 0x46, 0xa0, 0x50},
+    {0x46, 0x96, 0x3c, 0x8c, 0x50, 0xa0, 0x28, 0x78, 0x0a, 0x5a, 0x1e, 0x6e, 0x32, 0x82, 0x14, 0x64},
+    {0x64, 0x14, 0x82, 0x32, 0x6e, 0x1e, 0x5a, 0x0a, 0x78, 0x28, 0xa0, 0x50, 0x8c, 0x3c, 0x96, 0x46},
+    {0x46, 0x96, 0x0a, 0x5a, 0x3c, 0x8c, 0x14, 0x64, 0x50, 0xa0, 0x28, 0x78, 0x1e, 0x6e, 0x32, 0x82},
+    {0x82, 0x32, 0x6e, 0x1e, 0x78, 0x28, 0xa0, 0x50, 0x64, 0x14, 0x8c, 0x3c, 0x5a, 0x0a, 0x96, 0x46},
+    {0x46, 0x96, 0x0a, 0x5a, 0x50, 0xa0, 0x3c, 0x8c, 0x28, 0x78, 0x1e, 0x6e, 0x32, 0x82, 0x14, 0x64},
+    {0x64, 0x14, 0x82, 0x32, 0x6e, 0x1e, 0x78, 0x28, 0x8c, 0x3c, 0xa0, 0x50, 0x5a, 0x0a, 0x96, 0x46},
 };
 
- 
-//Spi Comm.pins with A7105/PPM
-  #define PPM_pin 3//PPM in 
-  #define SDI_pin 5 //SDIO-D5 
-  #define SCLK_pin 4 //SCK-D4
-  #define CS_pin 2//CS-D2
-  //---------------------------------  
-  #define  CS_on PORTD |= 0x04 //D2
-  #define  CS_off PORTD &= 0xFB //D2
-  //
-  #define  SCK_on PORTD |= 0x10//D4
-  #define  SCK_off PORTD &= 0xEF//D4
-  #define  SDI_on PORTD |= 0x20 //D5
-  #define  SDI_off PORTD &= 0xDF //D5
-  //
-  #define  SDI_1 (PIND & 0x20) == 0x20 //D5
-  #define  SDI_0 (PIND & 0x20) == 0x00 //D5
-  //
-  #define RED_LED_pin 13//promini LED
-  #define Red_LED_ON  PORTB |= _BV(5);//promini status LED on B5
-  #define Red_LED_OFF  PORTB &= ~_BV(5);
-  #define NOP() __asm__ __volatile__("nop")
-  
-//########## Variables #################
-static uint32_t id;//tx id, don't confuse it with A7105 id
-static uint8_t chanrow;
-static uint8_t chancol;
-static uint8_t chanoffset;
-static uint8_t channel;
-static word byte=255;
-static uint8_t aid[4];//for debug only
-static uint8_t packet[21];
-volatile uint16_t Servo_data[10] = {1500,1500,1000,1500,1500,1500,1500,1500};//8 channels
+//pins configuration
+static const int GIO_pin   = 13; //GIO
+static const int SDI_pin   = 19; //SDIO
+static const int SCLK_pin  = 18; //SCK
+static const int CS_pin    = 17; //CS
 
+static const int bind_pin  = 2;
+static const int RLED_pin  = 21;
+static const int MOT1_pin  = 12;
+static const int MOT2_pin  = 11;
+static const int MOT3a_pin = 9;
+static const int MOT3b_pin = 10;
+
+const uint32_t failsafeTimeout = 200;     //after this time failsafe mode is set
+const uint32_t channelChangeTimeout = 30; //after this time next chanel is listen
+
+const uint8_t flashPage[SPM_PAGESIZE] __attribute__ (( aligned(SPM_PAGESIZE) )) PROGMEM = {
+    0xAA, 0xE2, 0x35, 0x24, 0x94 //This is WLTOYS transmitter
+    //" "
+}; //preallocated frame for saving in flash memory id of Tx bytes: (0 to 4)
+
+inline void rLedOff() { digitalWrite(RLED_pin, HIGH);};
+inline void rLedOn()  { digitalWrite(RLED_pin, LOW) ;};
+
+
+//############## GLOBALS ################
+static uint8_t ramPage[SPM_PAGESIZE]; //id (0 to 4 bytes) and flash buffer
+static uint8_t packet[SPM_PAGESIZE];//at list 21 for storing recived frame
+
+//positions of recived signals (RC channels)
+static int16_t actuatorCH[10] = {1500,1500,1500,1500,1500,1500,1500,1500};
+
+//To transfer information from main loop into Interupt routine 
+int8_t INTstart=1; //starting index of for array
+struct INTdata {
+    uint8_t timer;
+    int8_t next;
+} static INTval[4] = {{0,-1},{0,-1},{0,-1},{0,-1}};
+
+volatile unsigned char adc_lo, adc_hi, o;
+volatile uint16_t count;
+
+//############### SETUP ################
 void setup() {
-  pinMode(RED_LED_pin, OUTPUT); 
-  //RF module pins
-  pinMode(PPM_pin, INPUT);//PPM input
-  pinMode(SDI_pin, OUTPUT);//SDI   SDIO 
-  pinMode(SCLK_pin, OUTPUT);//SCLK SCL 
-  pinMode(CS_pin, OUTPUT);//CS output
-  CS_on;//start CS high
-  SDI_on;//start SDIO high
-  SCK_off;//start sck low
- //PPm setup 
-attachInterrupt(PPM_pin - 2, read_ppm, CHANGE);
-TCCR1A = 0;
-TCCR1B = 0;
-TCCR1B |= (1 << CS11); 
- // 
-  
-  #if defined(DEBUG)
-  Serial.begin(SERIAL_BAUD_RATE);//for debugging
-  #endif
-  uint8_t i;
-  uint8_t if_calibration1;
-  uint8_t vco_calibration0;
-  uint8_t vco_calibration1;
- 
-  //for debug 
-  delay(10);//wait 10ms for A7105 wakeup
-  _spi_write_adress(0x00,0x00);
-  A7105_WriteID(0x5475c52A);//0x2Ac57554
- #if defined(DEBUG)
-  A7105_ReadID();//for debug only
-  Serial.print(aid[0],HEX);
-  Serial.print(aid[1],HEX);
-  Serial.print(aid[2],HEX);
-  Serial.print(aid[3],HEX);
- #endif 
-  for (i = 0; i < 0x33; i++){
-        if(A7105_regs[i] != 0xff)
-            _spi_write_adress(i, A7105_regs[i]);
-
-}
-_spi_strobe(0xA0);//stand-by
-_spi_write_adress(0x02,0x01);
-while(1){
-if_calibration1=_spi_read_adress(0x02);
-if(if_calibration1==0){
-break;
-}
-}
-_spi_read_adress(0x22);
-_spi_write_adress(0x24,0x13);
-_spi_write_adress(0x25,0x09);
-_spi_write_adress(0x28,0x1F);//set power to 1db maximum
-_spi_strobe(0xA0);//
-//id=0x30000006;//fixed TX ID(Thierry ID)
-//id=0x92040020;
-randomSeed((uint32_t)analogRead(A0) << 10 | analogRead(A4));
-id = random(0xfefefefe) + ((uint32_t)random(0xfefefefe) << 16);
+    noInterrupts();
+    
 #if defined(DEBUG)
-Serial.print(" ");
-Serial.print(id,HEX);
-Serial.print(" ");
+    Serial.begin(SERIAL_BAUD_RATE);//for debug
 #endif
 
-bind_Flysky();
-Red_LED_ON;
-chanrow=id % 16;
-chanoffset=(id & 0xff) / 16;
-chancol=0;
-}
+    pinMode(RLED_pin, OUTPUT);
+    pinMode(MOT1_pin, OUTPUT);
+    pinMode(MOT2_pin, OUTPUT);
+    pinMode(MOT3a_pin,OUTPUT);
+    pinMode(MOT3b_pin,OUTPUT);
+    
+    A7105_Init();
+    
+    if(testBindJumper()) {
+        bind_Flysky();    
+    }
 
-//servodata timing range for flysky.
-////-100% =~ 0x03e8//=1000us(min)
-//+100% =~ 0x07ca//=1994us(max)
-//Center = 0x5d9//=1497us(center)
-//channel order AIL;ELE;THR;RUD;AUX1;AUX2;AUX3;AUX4
+    optiboot_readPage(flashPage, ramPage, 1);
+
+    //-----------------TIMER2
+#if defined __AVR_ATmega8__
+    TCCR2  = 0x04; //Prescaler and config
+    TIMSK  = 0x40; //Interupt mode bit6
+#endif
+#if defined __AVR_ATmega88__ | __AVR_ATmega88P__
+    TCCR2A = 0x00; //Configure in normal mode (pure increment counting, no PWM etc.)
+    TIMSK2 = 0x01; //Disable Compare Match A interrupt enable (only want overflow)
+    TCCR2B = 0x04; //Prescaler clock divided by: 1=>1 32kHz, 2=>8 4kHz, 3=>32 1kHz,
+                   //      4=>64 500Hz, 5=>128 250Hz, 6=>256 125Hz, 7=>1024 32.5Hz
+#endif
+    ASSR   = 0x00; //Select clock source: internal I/O clock
+    TCNT2  = 0;    //Max time for first count
+
+
+    //-----------------ADC
+    //ADMUX  = 0xe0; //internal source voltage - channel0
+    //ADCSRA = 0xfe; //interupt on, free run
+
+    listenNextChannel();
+    interrupts();
+}
 
 //############ MAIN LOOP ##############
 void loop() {
-unsigned long pause;
-pause=micros();
-_spi_strobe(0xE0);
-Write_Packet(0x55);//
-channel=tx_channels[chanrow][chancol]-chanoffset;
-_spi_write_adress(0x0F,channel);
-_spi_strobe(0xD0);
-chancol = (chancol + 1) % 16;
-while(micros()-pause<1460);
-}
+    static uint32_t failsafeTime;
 
+    o=ADCH;
+    //Serial.print(adc_hi);Serial.print(" ");Serial.print(adc_lo/64);Serial.print(" ");Serial.println(count);
+    count=0;
 
-void read_ppm() {
-	static unsigned int pulse;
-	static unsigned long counterPPM;
-	static byte chan;
-	counterPPM = TCNT1;
-	TCNT1 = 0;
-#if F_CPU == 16000000//thanks to goebisch for this one
-	const long scale = 2;
-#elif F_CPU == 8000000
-	const long scale = 1;
-#else
-#error // 8 or 16MHz only !
+    if (recivePacket()) {
+        //recived
+        for (uint8_t i=0; i<8; i++) {
+            uint16_t actVal;
+            cli();
+            actVal=(packet[5+(2*i)]+255*packet[6+(2*i)]);
+            sei();
+            if ((actVal>900) && (actVal<2200)) {
+                actuatorCH[i]=actVal;
+            }
+#if defined(DEBUG)
+            Serial.print(actuatorCH[i]);
+            Serial.print(" ");
 #endif
-	if(counterPPM < 510*scale) {  //must be a pulse if less than 510us
-		pulse = counterPPM;
-	}
-	else if(counterPPM > 1910*scale) {  //sync pulses over 1910us
-		chan = 0;
-	}
-	else{  //servo values between 510us and 2420us will end up here
-		Servo_data[chan]= (counterPPM + pulse)/scale;
-		chan++;
-	}
+        }
+        
+        
+        failsafeTime = millis();
+        setActuators();
+    } else {
+        if( (millis()-failsafeTime) > failsafeTimeout ){
+            //Set failsafe actuatorCH
+            for (uint8_t i=0; i<8; i++) {
+                actuatorCH[i]=1500;
+            }
+            actuatorCH[2]=1000;
+#if defined(DEBUG)
+            Serial.print("Failsave! ");
+#endif
+            failsafeTime = millis();
+            setActuators();
+        }
+    }
 }
+
+bool recivePacket(void) {
+    //return true in case of correct packet recived
+    //it also set listening on correct channel
+
+    static uint32_t lastUpdateTime;
+
+
+    if (digitalRead(GIO_pin) == LOW) {
+        //Packet recived
+        if (A7105_checkCRC()) {
+            //CRC OK
+            Read_Packet();
+            if ( (packet[1]==ramPage[1]) && (packet[2]==ramPage[2]) && 
+                 (packet[3]==ramPage[3]) && (packet[4]==ramPage[4]) ) {
+                //TX ID OK - GOT IT!
+                listenNextChannel();
+#if defined(DEBUG)
+                Serial.print(millis()-lastUpdateTime);
+                Serial.print("+ ");
+#endif
+                lastUpdateTime = millis();
+                rLedOn();
+                return true;
+            }
+        }
+    }
+   
+    if ( (millis() - lastUpdateTime) > channelChangeTimeout ) {
+          //Times out - action required
+          listenNextChannel();
+#if defined(DEBUG)
+          Serial.print(millis()-lastUpdateTime);
+          Serial.println("- ");
+#endif
+          lastUpdateTime = millis();
+          rLedOff();
+    }
+    return false;
+}
+
+void listenNextChannel(){
+    static uint8_t chanrow;
+    static uint8_t chancol = 0;
+    static uint8_t chanoffset;
+    static uint8_t channel;
+    static bool firstTime = true;
+
+    if (firstTime){
+        firstTime = false;
+        chanrow=ramPage[1]%16;
+        chanoffset=ramPage[1]/16;
+        if(chanoffset > 9) chanoffset = 9;//from sloped soarer findings, bug in flysky protocol
+    }
+
+    //determine channel
+    channel=tx_channels[chanrow][chancol]-chanoffset-1;
+    chancol = (chancol + 1) % 16;
+
+#if defined(DEBUG)
+    Serial.print(chancol,HEX);
+    Serial.print(" ");
+    Serial.print(channel,HEX);
+    Serial.print("\t");
+#endif
+
+    A7105_listenChannel(channel);
+}
+
+
+void setActuators() {
+    int16_t motor1;
+    int16_t motor2;
+    int16_t motor3;
+    uint8_t motDir;
+    int16_t diff;
+
+    //two motors
+    actuatorCH[2]-=1000;
+    actuatorCH[0]-=1500;
+    
+    diff = (actuatorCH[2] / 5) * (actuatorCH[0] / 5) / 80;
+    
+    motor1 = (actuatorCH[2]+diff)/5;
+    motor2 = (actuatorCH[2]-diff)/5;
+    
+    motor1 = constrain(motor1, 0, 255);
+    motor2 = 255-constrain(motor2, 0, 255);
+
+    //setting data (motor 1 and 3) for interupt routine
+    if(motor1>motor2) {
+        INTstart = ( motor2 == 0 ) ? 2 : 0;
+        INTval[0].timer = 255-motor2;
+        INTval[2].timer = 255-motor1+motor2;
+        INTval[3].timer = motor1;
+        INTval[0].next = 2;
+        INTval[2].next = ( motor1 == 255 ) ? -1 : 3;
+        INTval[3].next = -1;
+    }
+    if(motor1<motor2) {
+        INTstart = ( motor1 == 0 ) ? 1 : 0;
+        INTval[0].timer = 255-motor1;
+        INTval[1].timer = 255-motor2+motor1;
+        INTval[3].timer = motor2;
+        INTval[0].next = 1;
+        INTval[1].next = ( motor2 == 255 ) ? -1 : 3;
+        INTval[3].next = -1;
+    }
+    if(motor1==motor2) {
+        INTval[0].timer = 255-motor1;
+        INTval[3].timer = motor1;
+        INTval[0].next = 3;
+        INTval[3].next = -1;
+    }
+
+    //motor3
+    motDir = (actuatorCH[1] > 1500) ? LOW : HIGH;
+    motor3 = (abs(actuatorCH[1]-1500))/2;
+    motor3 = constrain(motor3, 0, 255);
+    motor3 = (motor3 < 8) ? 0 : motor3;
+    if (motDir) {
+        analogWrite(MOT3a_pin, motor3);
+        analogWrite(MOT3b_pin, 0);
+    } else {
+        analogWrite(MOT3a_pin, 0);
+        analogWrite(MOT3b_pin, motor3);        
+    }
+    
+#if defined(DEBUG)
+    Serial.print(  "m1: ");
+    Serial.print(motor1);
+    Serial.print("\tm2: ");
+    Serial.print(motor2);
+    Serial.print("\tm3: ");
+    Serial.print(motor3);
+    Serial.print("\t");
+    Serial.print(motDir);
+    Serial.print(" d: ");
+    Serial.println(diff);
+#endif
+
+}
+
 
 //BIND_TX
 void bind_Flysky() {
-while(counter){
-_spi_strobe(0xA0);
-_spi_strobe(0xE0);
-_spi_write_adress(0x0F,0x01);
-Write_Packet(0xaa);
-_spi_strobe(0xD0);
-delay(10);
-if (bitRead(counter,3)==1) 
-Red_LED_ON;
-if(bitRead(counter,3)==0)
-Red_LED_OFF;
-counter--;
+
+    A7105_listenChannel(0);
+    
+    while(1) {
+        //LED blink
+        if((millis() % 300 ) > 150) {
+            rLedOn();
+        } else {
+            rLedOff();
+        }
+
+        if (digitalRead(GIO_pin) == LOW) {
+            if (A7105_checkCRC()) {
+                Read_Packet();
+                if(packet[0]==0xaa) {
+                    optiboot_writePage(flashPage, packet, 1);
+                    for(uint8_t i=0; i<5; i++) {
+#if defined(DEBUG)
+                        Serial.print(ramPage[i]);
+#endif
+                        ramPage[i]=packet[i];
+                    }
+#if defined(DEBUG)
+                    Serial.println("bind OK");
+#endif            
+                    return;
+                }
+            }
+            //something went wrong, start listen again
+            A7105_listenChannel(0);
+        }              
+    }//loop
 }
+
+
+//check presence of bind jumper
+bool testBindJumper() {
+    pinMode(bind_pin, INPUT_PULLUP);//pull up
+    if ( digitalRead(bind_pin) == LOW) {
+        delayMicroseconds(1);
+        return true;
+    }
+    return false;
 }
 
+//TIMER2 interupt rouitine
+ISR(TIMER2_OVF_vect) {
+    const bool mot1on[4] = {true , false, true, false};
+    const bool mot2on[4] = {false, false, true, true };
 
+    static int8_t idx = 1;
+    static INTdata conf[4] = {{0,-1},{0,-1},{0,-1},{0,-1}};
 
+    TCNT2 = conf[idx].timer; //Reset Timer
 
+    digitalWrite(MOT1_pin,mot1on[idx]);
+    digitalWrite(MOT2_pin,mot2on[idx]);
 
+    if ( conf[idx].next == -1 ) {
+        idx = INTstart;
+        conf[0] = INTval[0];
+        conf[1] = INTval[1];
+        conf[2] = INTval[2];
+        conf[3] = INTval[3];
+    } else {
+        idx = conf[idx].next;
+    }
+}
 
-
-
-
-
-
-
-
-  
-
+//ADC interupt routine
+ISR(ADC_vect) {
+    //change channel and load to buffer
+    count++;
+    adc_hi =  ADCH;
+    adc_lo =  ADCL;
+}
 
